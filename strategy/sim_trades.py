@@ -62,7 +62,7 @@ def _write_trade_plot_sample(
         mark_kind = "timeout"
 
     n = composite_candles.shape[0]
-    i_lo = max(0, setup_first - (int(l_value) + 3))
+    i_lo = max(0, setup_first - 3)
     i_hi = min(n - 1, entry_bar + H - 1 + 3)
     sl = slice(i_lo, i_hi + 1)
     chunk = composite_candles[sl]
@@ -92,6 +92,12 @@ def _write_trade_plot_sample(
         "outcome": out,
         "marker": {"bar": exit_bar, "price": mark_price, "kind": mark_kind},
         "slice_start_bar": int(i_lo),
+        "delta_left_price": float(
+            composite_candles[setup_first, 3] if direction == "long" else composite_candles[setup_first, 2]
+        ),
+        "delta_right_price": float(
+            composite_candles[setup_end, 2] if direction == "long" else composite_candles[setup_end, 3]
+        ),
     }
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:

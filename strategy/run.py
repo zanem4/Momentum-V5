@@ -199,7 +199,12 @@ def main():
                     "pip_value": float(pip_value),
                 }
 
-                for horizon in parameters["n_candles_forward"]:
+                horizons = list(parameters["n_candles_forward"])
+                sample_horizon = horizons[len(horizons) // 2]
+                for horizon in horizons:
+                    do_sample = int(horizon) == int(sample_horizon)
+                    long_sample_path = os.path.join(atr_dir, f"trade_sample_long_H{horizon}.json") if do_sample else None
+                    short_sample_path = os.path.join(atr_dir, f"trade_sample_short_H{horizon}.json") if do_sample else None
 
                     long_pnl = simulate_trades(
                         composite_candles,
@@ -210,7 +215,7 @@ def main():
                         target_multipliers,
                         stop_multipliers,
                         long_metrics,
-                        plot_sample_path=os.path.join(atr_dir, f"trade_sample_long_H{horizon}.json"),
+                        plot_sample_path=long_sample_path,
                         plot_sample_l_value=l_value,
                         plot_sample_extra=dict(plot_extra),
                         plot_sample_mt=0,
@@ -225,7 +230,7 @@ def main():
                         target_multipliers,
                         stop_multipliers,
                         short_metrics,
-                        plot_sample_path=os.path.join(atr_dir, f"trade_sample_short_H{horizon}.json"),
+                        plot_sample_path=short_sample_path,
                         plot_sample_l_value=l_value,
                         plot_sample_extra=dict(plot_extra),
                         plot_sample_mt=0,

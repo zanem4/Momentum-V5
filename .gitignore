@@ -4,5 +4,6 @@ analysis/output/
 
 # Python bytecode
 __pycache__/
+strategy/__pycache__/
 *.py[cod]
 *$py.class
