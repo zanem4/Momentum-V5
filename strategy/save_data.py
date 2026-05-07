@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -28,15 +29,60 @@ def _json_sanitize(obj: Any) -> Any:
     return obj
 
 
-def save_edge_data_json(atr_dir: str, long_edge_data: dict, short_edge_data: dict) -> None:
-    """Write quantile / bin assignments next to ATR leaf (shared across horizons)."""
+def _parse_utc_epoch_seconds(date_str: str) -> float:
+    dt = datetime.fromisoformat(str(date_str).strip())
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _slim_edge_for_json(edge_data: dict, parameters: dict) -> dict[str, Any]:
+    """Calibration + window bounds only (no per-setup bin arrays). Matches ``sort_trades`` geometry."""
+    Wn = int(edge_data["W"])
+    start_ts = _parse_utc_epoch_seconds(parameters["start_date"])
+    end_ts = _parse_utc_epoch_seconds(parameters["end_date"])
+    T = end_ts - start_ts
+    if T <= 0:
+        raise ValueError("end_date must be after start_date")
+    L = 2.0 * T / float(Wn + 1)
+    step = L / 2.0
+    bounds: list[dict[str, Any]] = []
+    for w in range(Wn):
+        t0 = start_ts + w * step
+        t1 = t0 + L
+        bounds.append(
+            {
+                "window_index": w,
+                "window_t0_utc": float(t0),
+                "window_t1_utc": float(t1),
+            }
+        )
+    return {
+        "W": Wn,
+        "k": int(edge_data["k"]),
+        "edges_spread_delta": _json_sanitize(edge_data["edges_spread_delta"]),
+        "edges_norm_accel": _json_sanitize(edge_data["edges_norm_accel"]),
+        "window_bounds": bounds,
+        "window_length_seconds": float(L),
+        "window_step_seconds": float(step),
+        "window_bounds_note": "window_t0_utc / window_t1_utc are UNIX epoch seconds (UTC). Join Parquet on window_index.",
+    }
+
+
+def save_edge_data_json(
+    atr_dir: str,
+    long_edge_data: dict,
+    short_edge_data: dict,
+    parameters: dict,
+) -> None:
+    """Write slim edge JSON (edges, W, k, window_bounds). Per-setup bin arrays omitted."""
     os.makedirs(atr_dir, exist_ok=True)
     path_long = os.path.join(atr_dir, "long_edge_data.json")
     path_short = os.path.join(atr_dir, "short_edge_data.json")
     with open(path_long, "w", encoding="utf-8") as f:
-        json.dump(_json_sanitize(long_edge_data), f, indent=2)
+        json.dump(_slim_edge_for_json(long_edge_data, parameters), f, indent=2)
     with open(path_short, "w", encoding="utf-8") as f:
-        json.dump(_json_sanitize(short_edge_data), f, indent=2)
+        json.dump(_slim_edge_for_json(short_edge_data, parameters), f, indent=2)
 
 
 def _sorted_to_long_frame(
@@ -60,27 +106,14 @@ def _sorted_to_long_frame(
     if tgt.size != Mt or stp.size != Ms:
         raise ValueError("target/stop multiplier lists must match sorted tensor shape")
 
-    t0 = np.asarray(sorted_dict["window_t0_utc"], dtype=np.float64).ravel()
-    t1 = np.asarray(sorted_dict["window_t1_utc"], dtype=np.float64).ravel()
-    if t0.size != Wn:
-        raise ValueError("window_t0_utc length must match W")
-
     g = np.indices((Wn, k, k, Mt, Ms))
     w, i, j, mt, ms = (g[t].ravel() for t in range(5))
-
-    t0_rep = t0[w]
-    t1_rep = t1[w]
-
-    t0_ts = pd.to_datetime(t0_rep, unit="s", utc=True).tz_convert("America/New_York")
-    t1_ts = pd.to_datetime(t1_rep, unit="s", utc=True).tz_convert("America/New_York")
 
     return pd.DataFrame(
         {
             "direction": direction,
             "n_candles_forward": np.full(w.size, int(n_candles_forward), dtype=np.int32),
             "window_index": w.astype(np.int32),
-            "window_t0": t0_ts,
-            "window_t1": t1_ts,
             "spread_bin": i.astype(np.int32),
             "norm_accel_bin": j.astype(np.int32),
             "target_mult": tgt[mt],

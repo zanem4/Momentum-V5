@@ -182,7 +182,7 @@ def main():
                 short_indices, short_edge_data = calculate_quantiles(short_metrics, short_indices)
 
                 # save direction-specific edge data (JSON; numpy → lists)
-                save_edge_data_json(atr_dir, long_edge_data, short_edge_data)
+                save_edge_data_json(atr_dir, long_edge_data, short_edge_data, parameters)
 
                 # simulate all forward time horizons, target and stop level combinations irrespective of time horizon
                 t_atr0 = time.perf_counter()
@@ -192,13 +192,44 @@ def main():
                 target_multipliers = np.array(parameters["target_multiplier"])
                 stop_multipliers = np.array(parameters["stop_multiplier"])
 
+                plot_extra = {
+                    "symbol": symbol,
+                    "timeframe_minutes": int(timeframe),
+                    "atr_length": int(atr_length),
+                    "pip_value": float(pip_value),
+                }
+
                 for horizon in parameters["n_candles_forward"]:
 
                     long_pnl = simulate_trades(
-                        composite_candles, long_indices, pip_value, "long", horizon, target_multipliers, stop_multipliers, long_metrics
+                        composite_candles,
+                        long_indices,
+                        pip_value,
+                        "long",
+                        horizon,
+                        target_multipliers,
+                        stop_multipliers,
+                        long_metrics,
+                        plot_sample_path=os.path.join(atr_dir, f"trade_sample_long_H{horizon}.json"),
+                        plot_sample_l_value=l_value,
+                        plot_sample_extra=dict(plot_extra),
+                        plot_sample_mt=0,
+                        plot_sample_ms=0,
                     )
                     short_pnl = simulate_trades(
-                        composite_candles, short_indices, pip_value, "short", horizon, target_multipliers, stop_multipliers, short_metrics
+                        composite_candles,
+                        short_indices,
+                        pip_value,
+                        "short",
+                        horizon,
+                        target_multipliers,
+                        stop_multipliers,
+                        short_metrics,
+                        plot_sample_path=os.path.join(atr_dir, f"trade_sample_short_H{horizon}.json"),
+                        plot_sample_l_value=l_value,
+                        plot_sample_extra=dict(plot_extra),
+                        plot_sample_mt=0,
+                        plot_sample_ms=0,
                     )
 
                     long_sorted = sort_trades(long_pnl, long_indices, long_edge_data, parameters, composite_candles)

@@ -159,9 +159,8 @@ def calculate_quantiles(
     Returns
     -------
     dict with keys:
-        ``W``, ``k``, ``n_fit``, ``n_total``, ``edges_spread_delta``, ``edges_norm_accel``,
-        ``spread_bin``, ``norm_accel_bin``, ``bin_id``, ``finite_mask``,
-        ``grid_fallback`` (bool — ``True`` if coarse fallback used).
+        ``W``, ``k``, ``edges_spread_delta``, ``edges_norm_accel`` (rounded to 5 decimals
+        before bin assignment), ``spread_bin``, ``norm_accel_bin``, ``bin_id``.
     """
     setup_indices = np.asarray(setup_indices).ravel()
 
@@ -203,6 +202,8 @@ def calculate_quantiles(
 
     edges_spread = fit_marginal_edges(spread_fit, k)
     edges_accel = fit_marginal_edges(accel_fit, k)
+    edges_spread = np.round(np.asarray(edges_spread, dtype=np.float64), 5)
+    edges_accel = np.round(np.asarray(edges_accel, dtype=np.float64), 5)
 
     spread_bin = assign_marginal_bins(spread, edges_spread, k)
     accel_bin = assign_marginal_bins(accel, edges_accel, k)

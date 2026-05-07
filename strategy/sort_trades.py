@@ -148,9 +148,9 @@ def sort_trades(pnl, indices, edge_data, parameters, composite_candles):
             for ms in range(Ms):
                 c, mn, md, st = _aggregate_window_mt_ms(pnl[:, mt, ms], joint_bin, in_win, valid_bin, k)
                 count[w, :, :, mt, ms] = c
-                mean[w, :, :, mt, ms] = mn
-                median[w, :, :, mt, ms] = md
-                std[w, :, :, mt, ms] = st
+                mean[w, :, :, mt, ms] = np.round(mn, 3)
+                median[w, :, :, mt, ms] = np.round(md, 3)
+                std[w, :, :, mt, ms] = np.round(st, 3)
 
     return {
         "W": Wn,
