@@ -1,0 +1,25 @@
+{
+    "data_path": "C:\\Users\\zanem\\Desktop\\Augment Quant\\New TOHLCV Data",
+
+    "start_date": "2023-01-01",
+    "end_date": "2024-12-31",
+
+    "use_random_asset": false,
+    "base": "EUR",
+    "quote": "USD",
+    
+    "pip_value_by_symbol": {
+        "EUR_USD": 10000,
+        "GBP_USD": 10000,
+        "NZD_USD": 10000,
+        "AUD_USD": 10000
+    },
+    "default_pip_value": 10000,
+
+    "timeframe_minutes": [3, 4, 5, 6, 10, 12, 15, 20, 30],
+    "n_candles_back": [3, 4, 5, 6],
+    "n_candles_forward": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+    "atr_length": [8, 13, 21, 34, 55, 89, 144],
+    "stop_multiplier": [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5],
+    "target_multiplier": [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5]
+}

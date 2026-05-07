@@ -1,0 +1,8 @@
+# Generated backtest / parquet outputs (any location)
+output/
+analysis/output/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class

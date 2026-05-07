@@ -1,0 +1,9 @@
+"number_rolling_windows": 7,
+"minute_bin_size": 30,
+"n_quantiles": 4,
+"timeframe_minutes": [3, 4, 5, 6, 10, 12, 15, 20, 30],
+"n_candles_back": [2, 3, 4, 5, 6],
+"n_candles_forward": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+"atr_length": [8, 13, 21, 34, 55, 89, 144],
+"stop_multiplier": [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5],
+"target_multiplier": [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5]
