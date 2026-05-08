@@ -6,12 +6,12 @@ from typing import Optional
 
 import numpy as np
 
-DEFAULT_E_MIN = 20
+DEFAULT_E_MIN = 30
 DEFAULT_K_MIN = 2
-DEFAULT_K_MAX = 25
-# Upper bound exclusive: np.arange(3, 8) → W ∈ {3,4,5,6,7}
+DEFAULT_K_MAX = 10
+# Upper bound exclusive: np.arange(3, 8) → W ∈ {3,4,5,6}
 DEFAULT_W_LOW = 3
-DEFAULT_W_HIGH = 8
+DEFAULT_W_HIGH = 7
 
 
 def choose_windows_and_bins(
