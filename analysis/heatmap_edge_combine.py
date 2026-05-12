@@ -20,46 +20,47 @@ def load_edge_dict(atr_dir: str, which: str) -> dict[str, Any]:
         return json.load(f)
 
 
-def _paired_ttest_rel(a: np.ndarray, b: np.ndarray) -> tuple[float | None, float | None]:
-    try:
-        from scipy import stats  # type: ignore[import-untyped]
-    except ImportError:
-        return None, None
+def _pairwise_percent_diff(a: np.ndarray, b: np.ndarray, eps: float = 1e-15) -> np.ndarray:
+    """
+    Per-index percent difference on magnitudes (stable when L and S straddle zero):
+
+    ``||a| - |b|| / max(mean(|a|, |b|), eps)`` with ``mean(|a|,|b|) = (|a|+|b|)/2`` element-wise.
+    """
     a = np.asarray(a, dtype=np.float64).ravel()
     b = np.asarray(b, dtype=np.float64).ravel()
-    if a.size != b.size or a.size < 2:
-        return None, None
-    t_stat, p_two = stats.ttest_rel(a, b)
-    return float(t_stat), float(p_two)
+    aa = np.abs(a)
+    bb = np.abs(b)
+    m = (aa + bb) / 2.0
+    d = np.abs(aa - bb)
+    den = np.maximum(m, eps)
+    return d / den
 
 
 def evaluate_long_short_edges(
     long_d: dict[str, Any],
     short_d: dict[str, Any],
-    atol: float,
-    rtol: float,
+    max_pct_diff: float,
 ) -> tuple[bool, dict[str, Any]]:
     """
-    Gate combining long+short on ordinal bin alignment:
+    Gate combining long+short when ``k`` and ``W`` match and, for every edge index ``i``,
 
-    1. Require ``k`` and ``W`` equal.
-    2. Element-wise tolerance: ``|L-S| <= atol + rtol * max(|L|,|S|,eps)`` on both edge arrays.
-    3. Paired ``ttest_rel`` on spread and accel edge vectors when SciPy is installed (report-only).
+    ``||L_i| - |S_i|| / max((|L_i|+|S_i|)/2, eps) <= max_pct_diff``
 
-    Returns (passed_gate, diagnostics).
+    on both ``edges_spread_delta`` and ``edges_norm_accel`` (long vs short for each).
+    ``max_pct_diff`` = 0.10 is 10% (fraction, not 0.1%).
     """
     k_lo = int(long_d["k"])
     k_sh = int(short_d["k"])
     W_lo = int(long_d["W"])
     W_sh = int(short_d["W"])
-    eps = 1e-12
+    thr = float(max_pct_diff)
     diag: dict[str, Any] = {
         "k_long": k_lo,
         "k_short": k_sh,
         "W_long": W_lo,
         "W_short": W_sh,
-        "atol": float(atol),
-        "rtol": float(rtol),
+        "max_pct_diff": thr,
+        "max_pct_diff_percent": round(100.0 * thr, 6),
     }
 
     if k_lo != k_sh:
@@ -67,6 +68,9 @@ def evaluate_long_short_edges(
         return False, diag
     if W_lo != W_sh:
         diag["reason"] = "W_long != W_short"
+        return False, diag
+    if not np.isfinite(thr) or thr < 0:
+        diag["reason"] = "max_pct_diff must be a non-negative finite number"
         return False, diag
 
     es_lo = np.asarray(long_d["edges_spread_delta"], dtype=np.float64).ravel()
@@ -81,38 +85,26 @@ def evaluate_long_short_edges(
         diag["reason"] = "edges_norm_accel length mismatch"
         return False, diag
 
-    d_sp = np.abs(es_lo - es_sh)
-    d_ac = np.abs(ea_lo - ea_sh)
-    s_sp = np.maximum(np.maximum(np.abs(es_lo), np.abs(es_sh)), eps)
-    s_ac = np.maximum(np.maximum(np.abs(ea_lo), np.abs(ea_sh)), eps)
-    tol_sp = float(atol) + float(rtol) * s_sp
-    tol_ac = float(atol) + float(rtol) * s_ac
+    pct_sp = _pairwise_percent_diff(es_lo, es_sh)
+    pct_ac = _pairwise_percent_diff(ea_lo, ea_sh)
 
-    diag["spread_max_abs_diff"] = float(np.max(d_sp)) if d_sp.size else 0.0
-    diag["accel_max_abs_diff"] = float(np.max(d_ac)) if d_ac.size else 0.0
-    diag["spread_max_abs_diff_over_tol"] = float(np.max(d_sp / tol_sp)) if d_sp.size else 0.0
-    diag["accel_max_abs_diff_over_tol"] = float(np.max(d_ac / tol_ac)) if d_ac.size else 0.0
+    diag["spread_max_pct_diff"] = float(np.max(pct_sp)) if pct_sp.size else 0.0
+    diag["accel_max_pct_diff"] = float(np.max(pct_ac)) if pct_ac.size else 0.0
 
-    ok_sp = bool(np.all(d_sp <= tol_sp)) if d_sp.size else True
-    ok_ac = bool(np.all(d_ac <= tol_ac)) if d_ac.size else True
+    ok_sp = bool(np.all(pct_sp <= thr)) if pct_sp.size else True
+    ok_ac = bool(np.all(pct_ac <= thr)) if pct_ac.size else True
     passed = ok_sp and ok_ac
     diag["spread_within_tol"] = ok_sp
     diag["accel_within_tol"] = ok_ac
     if not passed:
-        diag["reason"] = "edge element-wise tolerance failed (spread and/or accel)"
+        diag["reason"] = (
+            f"edge percent diff ||L|-|S||/mean(|L|,|S|) exceeds {thr:.4g} "
+            f"({100.0 * thr:.4g}%); see spread_max_pct_diff / accel_max_pct_diff"
+        )
         if not ok_sp:
             diag["failed_axis"] = "edges_spread_delta"
         elif not ok_ac:
             diag["failed_axis"] = "edges_norm_accel"
-
-    # Supplementary paired t-tests (do not override the tolerance gate)
-    t_sp, p_sp = _paired_ttest_rel(es_lo, es_sh)
-    t_ac, p_ac = _paired_ttest_rel(ea_lo, ea_sh)
-    diag["paired_ttest"] = {
-        "edges_spread_delta": {"t_statistic": t_sp, "pvalue_two_sided": p_sp},
-        "edges_norm_accel": {"t_statistic": t_ac, "pvalue_two_sided": p_ac},
-        "note": "Informational; install scipy for values. Does not replace tolerance gate.",
-    }
 
     return passed, diag
 
@@ -142,8 +134,8 @@ def build_merged_edge_payload(
         "diagnostics": diagnostics,
         "interpretation_note": (
             "Pooling Parquet rows assumes spread_bin and norm_accel_bin ordinals are comparable "
-            "when long/short edges are close under atol/rtol. Not a formal proof of identical "
-            "joint distributions."
+            "when long/short marginal edges agree per index: "
+            "||L|-|S||/mean(|L|,|S|) <= max_pct_diff. Not a formal proof of identical joint distributions."
         ),
     }
     return out

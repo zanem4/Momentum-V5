@@ -22,8 +22,8 @@ def calculate_metrics(composite_candles, setup_indices, atr, direction, l_value,
     accel_values = np.diff(velo_values, axis=1)
     acceleration_avg = np.mean(accel_values, axis=1)
 
-    # get spread at entry
-    spread_at_entry = composite_candles[setup_indices, 14]
+    # spread at setup bar: p50 composite spread only (cols 6–10 = p10..p90)
+    spread_at_entry = composite_candles[setup_indices, 8]
 
     # calculate and return metrics
     metrics = {

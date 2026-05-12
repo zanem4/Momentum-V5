@@ -4,6 +4,7 @@
 import os
 import sys
 import json
+import shutil
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
@@ -273,6 +274,15 @@ def main():
 
     total_elapsed = time.perf_counter() - start_perf
     _write_throughput_report(main_dir, total_sims, total_elapsed, by_timeframe)
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    param_src = os.path.join(repo_root, "utils", "parameters.json")
+    param_dst = os.path.join(main_dir, "parameters.json")
+    if os.path.isfile(param_src):
+        shutil.copy2(param_src, param_dst)
+        print(f"[run] saved parameters snapshot: {param_dst}")
+    else:
+        print(f"[run] warning: could not copy parameters (missing {param_src})")
 
     tfs = sorted(by_timeframe.keys())
     sum_sec = sum(float(by_timeframe[tf]["seconds"]) for tf in tfs)

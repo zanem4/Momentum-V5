@@ -121,10 +121,11 @@ def simulate_trades(
     plot_sample_ms: int = 0,
 ):
 
-    # get needed ohlc
-    spreads = composite_candles[:, 14]
+    # TOHLCV + p10..p90 spreads at cols 6–10; simulation uses random percentile per fill
+    pct = composite_candles[:, 6:11]
     opens = composite_candles[:, 1]
     closes = composite_candles[:, 4]
+    rng = np.random.default_rng()
 
     # direction-aware callables
     target_check = np.greater_equal if direction == "long" else np.less_equal
@@ -137,9 +138,12 @@ def simulate_trades(
 
     H = int(horizon)
 
-    # get trading indices and calculate entry price (pay half of spread as move from mid to bid or ask)
+    # entry bar: half-spread from open using one random percentile row per setup
     trading_indices = indices + 1  # trade begins on bar after setup
-    entry_prices = opens[trading_indices] + (spreads[trading_indices] / 2)
+    S = int(trading_indices.shape[0])
+    pick_e = rng.integers(0, 5, size=S, endpoint=False)
+    spreads_entry = pct[trading_indices, pick_e]
+    entry_prices = opens[trading_indices] + (spreads_entry / 2)
     price_delta = metrics["raw_delta"]
 
     # prep array of prices to check for targets and stops per horizon array
@@ -199,15 +203,17 @@ def simulate_trades(
     close_target = closes[target_exit_bar]
     close_timeout = closes[timeout_exit_bar][:, np.newaxis, np.newaxis]
 
-    # get spread at corresponding trade end
+    # exit: full spread cost — independent random percentile per (setup, Mt, Ms) at exit bar
+    r_stop = rng.integers(0, 5, size=stop_exit_bar.shape, endpoint=False)
+    r_tgt = rng.integers(0, 5, size=target_exit_bar.shape, endpoint=False)
+    r_to = rng.integers(0, 5, size=timeout_exit_bar.shape, endpoint=False)
+    sp_stop = pct[stop_exit_bar, r_stop]
+    sp_tgt = pct[target_exit_bar, r_tgt]
+    sp_to = pct[timeout_exit_bar, r_to][:, np.newaxis, np.newaxis]
     spread_end = np.where(
         trade_outcome == -1,
-        spreads[stop_exit_bar],
-        np.where(
-            trade_outcome == 1,
-            spreads[target_exit_bar],
-            spreads[timeout_exit_bar][:, np.newaxis, np.newaxis],
-        ),
+        sp_stop,
+        np.where(trade_outcome == 1, sp_tgt, sp_to),
     )
 
     # concatenate into a single array

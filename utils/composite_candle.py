@@ -1,10 +1,10 @@
 # composite candle by timeframe — NumPy, UTC bucket alignment
 import numpy as np
 
-# Column indices (same as run.py comment)
+# Input / output column layout (TOHLCV + five spread percentiles)
 # 0: Time, 1: Open, 2: High, 3: Low, 4: Close, 5: Volume
-# 6: Bid Open, 7: Bid High, 8: Bid Low, 9: Bid Close
-# 10: Ask Open, 11: Ask High, 12: Ask Low, 13: Ask Close, 14: Spread Close
+# 6: p10_spread, 7: p30_spread, 8: p50_spread, 9: p70_spread, 10: p90_spread
+_N_COL = 11
 
 _MIN_COVERAGE_NUM = 4
 _MIN_COVERAGE_DEN = 5
@@ -25,10 +25,18 @@ def composite_candle(data, timeframe_minutes):
     Rows are ordered by (period_id, time); aggregation uses reduceat over runs.
     Column 0 is set to bucket_start.
 
-    Returns composites and the m1 row indices used (for alignment with m1).
+    Input ``data`` must have at least 11 columns (TOHLCV + p10/p30/p50/p70/p90 spread).
+    For each spread column, the composite value is the **mean** of m1 values in the bucket.
+
+    Returns composites with shape (n, 11) and the m1 row indices used (for alignment with m1).
     """
     if data.size == 0:
-        return np.empty((0, data.shape[1]), dtype=data.dtype), np.array([], dtype=np.intp)
+        return np.empty((0, _N_COL), dtype=data.dtype), np.array([], dtype=np.intp)
+
+    if data.shape[1] < _N_COL:
+        raise ValueError(
+            f"expected at least {_N_COL} columns (TOHLCV + 5 spread percentiles), got {data.shape[1]}"
+        )
 
     period_seconds = timeframe_minutes * 60
     m1_times = data[:, 0]
@@ -45,10 +53,10 @@ def composite_candle(data, timeframe_minutes):
     run_ends = boundaries[1:]
     n_runs = len(run_starts)
     if n_runs == 0:
-        return np.empty((0, data.shape[1]), dtype=data.dtype), np.array([], dtype=np.intp)
+        return np.empty((0, _N_COL), dtype=data.dtype), np.array([], dtype=np.intp)
 
-    run_lengths = run_ends - run_starts
-    run_id = np.repeat(np.arange(n_runs, dtype=np.intp), run_lengths)
+    run_lengths = (run_ends - run_starts).astype(np.float64)
+    run_id = np.repeat(np.arange(n_runs, dtype=np.intp), (run_ends - run_starts).astype(np.intp))
 
     ps_i64 = ps.astype(np.int64, copy=False)
     bucket_row = ps_i64 * np.int64(period_seconds)
@@ -75,7 +83,7 @@ def composite_candle(data, timeframe_minutes):
 
     eligible = cov_ok & gap_ok
     if not np.any(eligible):
-        return np.empty((0, data.shape[1]), dtype=data.dtype), np.array([], dtype=np.intp)
+        return np.empty((0, _N_COL), dtype=data.dtype), np.array([], dtype=np.intp)
 
     e = eligible
     buck = ps_i64[run_starts] * np.int64(period_seconds)
@@ -83,26 +91,28 @@ def composite_candle(data, timeframe_minutes):
     vol = np.add.reduceat(ds[:, 5], run_starts)
     hi = np.maximum.reduceat(ds[:, 2], run_starts)
     lo = np.minimum.reduceat(ds[:, 3], run_starts)
-    bid_hi = np.maximum.reduceat(ds[:, 7], run_starts)
-    bid_lo = np.minimum.reduceat(ds[:, 8], run_starts)
-    ask_hi = np.maximum.reduceat(ds[:, 11], run_starts)
-    ask_lo = np.minimum.reduceat(ds[:, 12], run_starts)
 
     open_ = ds[run_starts, 1]
-    bid_open = ds[run_starts, 6]
-    ask_open = ds[run_starts, 10]
     re_1 = run_ends - 1
     close_ = ds[re_1, 4]
-    bid_close = ds[re_1, 9]
-    ask_close = ds[re_1, 13]
-    spr_close = ds[re_1, 14]
 
-    out = np.column_stack([
-        buck[e].astype(data.dtype, copy=False),
-        open_[e], hi[e], lo[e], close_[e], vol[e],
-        bid_open[e], bid_hi[e], bid_lo[e], bid_close[e],
-        ask_open[e], ask_hi[e], ask_lo[e], ask_close[e], spr_close[e],
-    ]).astype(data.dtype, copy=False)
+    sp_means: list[np.ndarray] = []
+    for j in range(6, _N_COL):
+        sm = np.add.reduceat(ds[:, j].astype(np.float64, copy=False), run_starts)
+        sp_means.append(sm / np.maximum(run_lengths, 1.0))
+
+    out_dt = np.result_type(data.dtype, np.float64)
+    out = np.column_stack(
+        [
+            buck[e].astype(out_dt, copy=False),
+            open_[e].astype(out_dt, copy=False),
+            hi[e].astype(out_dt, copy=False),
+            lo[e].astype(out_dt, copy=False),
+            close_[e].astype(out_dt, copy=False),
+            vol[e].astype(out_dt, copy=False),
+            *[m[e].astype(out_dt, copy=False) for m in sp_means],
+        ]
+    )
 
     keep_row = e[run_id]
     m1_indices = order[keep_row]
